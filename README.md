@@ -53,3 +53,46 @@ python main.py
 5. Настройте текст/медиа и параметры рассылки
 6. Запустите рассылку
 
+## Автозапуск и обновление на сервере (systemd)
+
+1. Клонируйте репозиторий и создайте `.env`.
+2. Установите сервис и включите автозапуск:
+```bash
+chmod +x scripts/install_service.sh
+./scripts/install_service.sh
+```
+
+3. Обновление и рестарт одной командой:
+```bash
+chmod +x scripts/update.sh
+./scripts/update.sh
+```
+
+## Автозапуск и обновление на сервере (systemd)
+
+1. Клонируйте репозиторий и создайте `.env`.
+2. Установите сервис и включите автозапуск:
+```bash
+chmod +x scripts/install_service.sh
+./scripts/install_service.sh
+```
+
+3. Обновление и рестарт одной командой:
+```bash
+chmod +x scripts/update.sh
+./scripts/update.sh
+```
+## Автозапуск и обновление на сервере (systemd)
+
+1. Клонируйте репозиторий и создайте `.env`.
+2. Установите сервис и включите автозапуск:
+```bash
+chmod +x scripts/install_service.sh
+./scripts/install_service.sh
+```
+
+3. Обновление и рестарт одной командой:
+```bash
+chmod +x scripts/update.sh
+./scripts/update.sh
+```
