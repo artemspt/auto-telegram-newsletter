@@ -1,7 +1,6 @@
 @echo off
 setlocal
 
-REM идем из scripts в корень
 cd /d "%~dp0.."
 
 echo === ROOT ===
