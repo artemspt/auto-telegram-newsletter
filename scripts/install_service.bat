@@ -1,8 +1,11 @@
 @echo off
 setlocal
 
-set ROOT_DIR=%~dp0..
-cd /d "%ROOT_DIR%"
+REM идем из scripts в корень
+cd /d "%~dp0.."
+
+echo === ROOT ===
+cd
 
 echo === CHECK PYTHON ===
 
@@ -10,7 +13,7 @@ where python >nul 2>&1
 if %errorlevel% neq 0 (
     where py >nul 2>&1
     if %errorlevel% neq 0 (
-        echo ERROR: Python not found. Install Python and restart.
+        echo ERROR: Python not found
         pause
         exit /b
     ) else (
@@ -28,29 +31,35 @@ if not exist ".venv" (
 )
 
 if not exist ".venv\Scripts\python.exe" (
-    echo ERROR: venv creation failed
+    echo ERROR: venv not created
     pause
     exit /b
+)
+
+echo === LOAD .ENV ===
+if exist ".env" (
+    for /f "delims=" %%x in (.env) do set %%x
 )
 
 echo === INSTALL DEPENDENCIES ===
 .venv\Scripts\python.exe -m pip install --upgrade pip
 .venv\Scripts\python.exe -m pip install -r requirements.txt
 
+echo === CREATE RUN FILE ===
+
+set RUN_FILE=%CD%\run_bot.bat
+
+echo @echo off > "%RUN_FILE%"
+echo cd /d "%CD%" >> "%RUN_FILE%"
+echo for /f "delims=" %%%%x in (.env) do set %%%%x >> "%RUN_FILE%"
+echo start "" "%CD%\.venv\Scripts\python.exe" "%CD%\main.py" >> "%RUN_FILE%"
+
 echo === ADD TO AUTOSTART ===
 
 set STARTUP=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup
-set BAT_PATH=%ROOT_DIR%\run_bot.bat
+copy "%RUN_FILE%" "%STARTUP%" >nul
 
-echo @echo off > "%BAT_PATH%"
-echo cd /d "%ROOT_DIR%" >> "%BAT_PATH%"
-echo start "" "%ROOT_DIR%\.venv\Scripts\python.exe" "%ROOT_DIR%\main.py" >> "%BAT_PATH%"
-
-copy "%BAT_PATH%" "%STARTUP%" >nul
-
-echo Added to startup
-
-echo === START BOT NOW ===
+echo === START BOT ===
 start "" .venv\Scripts\python.exe main.py
 
 echo === DONE ===
