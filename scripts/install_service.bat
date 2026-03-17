@@ -1,19 +1,57 @@
 @echo off
+setlocal
 
 set ROOT_DIR=%~dp0..
-set VENV_DIR=%ROOT_DIR%\.venv
-set PYTHON_BIN=%VENV_DIR%\Scripts\python.exe
+cd /d "%ROOT_DIR%"
 
-echo Creating virtual environment...
+echo === CHECK PYTHON ===
 
-if not exist "%VENV_DIR%" (
-    python -m venv "%VENV_DIR%"
+where python >nul 2>&1
+if %errorlevel% neq 0 (
+    where py >nul 2>&1
+    if %errorlevel% neq 0 (
+        echo ERROR: Python not found. Install Python and restart.
+        pause
+        exit /b
+    ) else (
+        set PY_CMD=py
+    )
+) else (
+    set PY_CMD=python
 )
 
-echo Installing dependencies...
+echo Using %PY_CMD%
 
-"%PYTHON_BIN%" -m pip install --upgrade pip
-"%PYTHON_BIN%" -m pip install -r "%ROOT_DIR%\requirements.txt"
+echo === CREATE VENV ===
+if not exist ".venv" (
+    %PY_CMD% -m venv .venv
+)
 
-echo Setup complete
+if not exist ".venv\Scripts\python.exe" (
+    echo ERROR: venv creation failed
+    pause
+    exit /b
+)
+
+echo === INSTALL DEPENDENCIES ===
+.venv\Scripts\python.exe -m pip install --upgrade pip
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+
+echo === ADD TO AUTOSTART ===
+
+set STARTUP=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup
+set BAT_PATH=%ROOT_DIR%\run_bot.bat
+
+echo @echo off > "%BAT_PATH%"
+echo cd /d "%ROOT_DIR%" >> "%BAT_PATH%"
+echo start "" "%ROOT_DIR%\.venv\Scripts\python.exe" "%ROOT_DIR%\main.py" >> "%BAT_PATH%"
+
+copy "%BAT_PATH%" "%STARTUP%" >nul
+
+echo Added to startup
+
+echo === START BOT NOW ===
+start "" .venv\Scripts\python.exe main.py
+
+echo === DONE ===
 pause
