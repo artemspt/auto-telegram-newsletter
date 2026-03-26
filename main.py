@@ -22,7 +22,16 @@ from telethon.tl.types import (
     InputPeerChannel,
     InputPeerChat,
     InputPeerUser,
+    MessageEntityBlockquote,
+    MessageEntityBold,
+    MessageEntityCode,
     MessageEntityCustomEmoji,
+    MessageEntityItalic,
+    MessageEntityPre,
+    MessageEntitySpoiler,
+    MessageEntityStrike,
+    MessageEntityTextUrl,
+    MessageEntityUnderline,
 )
 from telethon.tl.functions.messages import GetDialogFiltersRequest
 
@@ -126,11 +135,6 @@ class UserState(StatesGroup):
     wait_password = State()
     selecting_folders = State()
     selecting_chats = State()
-    waiting_api_id = State()
-    waiting_api_hash = State()
-    waiting_admin_id = State()
-    waiting_admin_broadcast = State()
-    waiting_admin_view_profile_username = State()
 
 
 def _get_media_info(message: Message):
@@ -146,36 +150,85 @@ def _get_media_info(message: Message):
     return None, None
 
 
-def _extract_custom_emoji_entities(entities) -> list[dict]:
+def _extract_message_entities(entities) -> list[dict]:
     if not entities:
         return []
     result = []
     for ent in entities:
-        if getattr(ent, "type", None) == "custom_emoji" and getattr(ent, "custom_emoji_id", None):
-            result.append(
-                {
-                    "type": "custom_emoji",
-                    "offset": ent.offset,
-                    "length": ent.length,
-                    "custom_emoji_id": ent.custom_emoji_id,
-                }
-            )
+        ent_type = getattr(ent, "type", None)
+        if not ent_type:
+            continue
+
+        item = {
+            "type": ent_type,
+            "offset": ent.offset,
+            "length": ent.length,
+        }
+
+        if getattr(ent, "url", None):
+            item["url"] = ent.url
+        if getattr(ent, "language", None):
+            item["language"] = ent.language
+        if getattr(ent, "custom_emoji_id", None):
+            item["custom_emoji_id"] = ent.custom_emoji_id
+
+        result.append(item)
     return result
 
 
 def _build_telethon_entities(entities_data):
     if not entities_data:
         return None
+
+    entity_types = {
+        "bold": MessageEntityBold,
+        "italic": MessageEntityItalic,
+        "underline": MessageEntityUnderline,
+        "strikethrough": MessageEntityStrike,
+        "spoiler": MessageEntitySpoiler,
+        "code": MessageEntityCode,
+        "blockquote": MessageEntityBlockquote,
+    }
+
     result = []
     for ent in entities_data:
-        if ent.get("type") == "custom_emoji" and ent.get("custom_emoji_id"):
+        ent_type = ent.get("type")
+        offset = int(ent.get("offset", 0))
+        length = int(ent.get("length", 0))
+
+        if ent_type in entity_types:
+            result.append(entity_types[ent_type](offset=offset, length=length))
+            continue
+
+        if ent_type == "pre":
+            result.append(
+                MessageEntityPre(
+                    offset=offset,
+                    length=length,
+                    language=ent.get("language", "") or "",
+                )
+            )
+            continue
+
+        if ent_type == "text_link" and ent.get("url"):
+            result.append(
+                MessageEntityTextUrl(
+                    offset=offset,
+                    length=length,
+                    url=ent["url"],
+                )
+            )
+            continue
+
+        if ent_type == "custom_emoji" and ent.get("custom_emoji_id"):
             result.append(
                 MessageEntityCustomEmoji(
-                    offset=int(ent.get("offset", 0)),
-                    length=int(ent.get("length", 0)),
+                    offset=offset,
+                    length=length,
                     document_id=int(ent["custom_emoji_id"]),
                 )
             )
+
     return result or None
 
 
@@ -246,11 +299,6 @@ async def command_start_handler(message: Message) -> None:
     builder.row(KeyboardButton(text="настройки"))
     builder.row(KeyboardButton(text="профиль"))
     builder.row(KeyboardButton(text="поддержка"))
-    
-    # Добавляем кнопку для администратора
-    is_admin = await db.is_admin(message.from_user.id)
-    if is_admin:
-        builder.row(KeyboardButton(text="⚙️ Админ панель"))
 
     reply_kb = builder.as_markup(
         resize_keyboard=True,
@@ -296,53 +344,6 @@ async def show_broadcast_menu(message: Message, state: FSMContext):
     keyboard = builder.as_markup()
     sent = await message.answer("Выберите действие:", reply_markup=keyboard)
     active_broadcast_menu_refs[user_id] = (sent.chat.id, sent.message_id)
-
-
-async def _send_broadcast_message(bot: Bot, user_id: int, message: Message):
-    if message.photo:
-        return await bot.send_photo(
-            chat_id=user_id,
-            photo=message.photo[-1].file_id,
-            caption=message.caption or "",
-            caption_entities=message.caption_entities,
-            parse_mode=None,
-        )
-    if message.animation:
-        return await bot.send_animation(
-            chat_id=user_id,
-            animation=message.animation.file_id,
-            caption=message.caption or "",
-            caption_entities=message.caption_entities,
-            parse_mode=None,
-        )
-    if message.video:
-        return await bot.send_video(
-            chat_id=user_id,
-            video=message.video.file_id,
-            caption=message.caption or "",
-            caption_entities=message.caption_entities,
-            parse_mode=None,
-        )
-    if message.document:
-        return await bot.send_document(
-            chat_id=user_id,
-            document=message.document.file_id,
-            caption=message.caption or "",
-            caption_entities=message.caption_entities,
-            parse_mode=None,
-        )
-    if message.text:
-        return await bot.send_message(
-            chat_id=user_id,
-            text=message.text,
-            entities=message.entities,
-            parse_mode=None,
-        )
-    return await bot.copy_message(
-        chat_id=user_id,
-        from_chat_id=message.chat.id,
-        message_id=message.message_id,
-    )
 
 
 def _is_broadcast_running(user_id: int) -> bool:
@@ -996,7 +997,7 @@ async def process_text(message: Message, state: FSMContext):
     temp_file_id, temp_media_type = _get_media_info(message)
     
     if temp_file_id is None:
-        text_entities = _extract_custom_emoji_entities(message.entities)
+        text_entities = _extract_message_entities(message.entities)
         await db.create_or_update_broadcast_settings(
             message.from_user.id,
             text=message.text,
@@ -1008,7 +1009,7 @@ async def process_text(message: Message, state: FSMContext):
         )
         await message.answer(f"✅ Текст сохранен!")
     else:
-        caption_entities = _extract_custom_emoji_entities(message.caption_entities)
+        caption_entities = _extract_message_entities(message.caption_entities)
         await db.create_or_update_broadcast_settings(
             message.from_user.id,
             text=None,
@@ -1030,255 +1031,6 @@ async def cancel_handler(query: CallbackQuery, state: FSMContext):
     await query.answer()
 
 
-
-#@dp.message(F.text == "Профиль")
-#async def profile_panel_handler(message: Message):
-
-
-
-
-
-# ==================== АДМИН КОМАНДЫ ====================
-
-@dp.message(F.text == "⚙️ Админ панель")
-async def admin_panel_handler(message: Message):
-    """Показать админ панель"""
-    is_admin = await db.is_admin(message.from_user.id)
-    if not is_admin:
-        await message.answer("❌ У вас нет прав администратора")
-        return
-    
-    builder = InlineKeyboardBuilder()
-    #builder.row(InlineKeyboardButton(text="🔑 Установить API_ID/API_HASH", callback_data="admin_set_api"))
-    builder.row(InlineKeyboardButton(text="👤 Назначить администратора", callback_data="admin_set_admin"))
-    builder.row(InlineKeyboardButton(text="📊 Текущие настройки", callback_data="admin_view_settings"))
-    builder.row(InlineKeyboardButton(text="📣 Рассылка всем", callback_data="admin_broadcast_all"))
-    builder.row(InlineKeyboardButton(text="👤 Профиль пользователя", callback_data="admin_view_profile"))
-    
-    await message.answer("⚙️ Админ панель:", reply_markup=builder.as_markup())
-
-
-@dp.callback_query(F.data == "admin_view_profile")
-async def admin_view_profile_handler(query: CallbackQuery, state: FSMContext):
-    is_admin = await db.is_admin(query.from_user.id)
-    if not is_admin:
-        await query.answer("❌ У вас нет прав администратора", show_alert=True)
-        return
-    await query.message.answer("Введите username пользователя для просмотра профиля:")
-    await state.set_state(UserState.waiting_admin_view_profile_username)
-    await query.answer()
-
-
-@dp.message(UserState.waiting_admin_view_profile_username)
-async def admin_view_profile_username_handler(message: Message, state: FSMContext):
-    is_admin = await db.is_admin(message.from_user.id)
-    if not is_admin:
-        await message.answer("❌ У вас нет прав администратора")
-        await state.clear()
-        return
-
-    if not message.text:
-        await message.answer("Отправьте username текстом")
-        return
-
-    username = message.text.strip()
-    if not username:
-        await message.answer("Username не может быть пустым")
-        return
-
-    user = await db.get_user_by_username(username)
-    if not user:
-        await message.answer("❌ Пользователь не найден. Он должен хотя бы раз написать боту.")
-        await state.clear()
-        return
-
-    profile_text = await _build_profile_text(user)
-    await message.answer(profile_text)
-    await state.clear()
-
-
-@dp.callback_query(F.data == "admin_broadcast_all")
-async def admin_broadcast_all_handler(query: CallbackQuery, state: FSMContext):
-    is_admin = await db.is_admin(query.from_user.id)
-    if not is_admin:
-        await query.answer("❌ У вас нет прав администратора", show_alert=True)
-        return
-
-    await query.message.answer("📣 Отправьте сообщение для рассылки всем пользователям бота:")
-    await state.set_state(UserState.waiting_admin_broadcast)
-    await query.answer()
-
-
-@dp.message(UserState.waiting_admin_broadcast)
-async def process_admin_broadcast(message: Message, state: FSMContext):
-    is_admin = await db.is_admin(message.from_user.id)
-    if not is_admin:
-        await message.answer("❌ У вас нет прав администратора")
-        await state.clear()
-        return
-
-    user_ids = await db.get_all_user_ids()
-    if not user_ids:
-        await message.answer("❌ Нет пользователей для рассылки")
-        await state.clear()
-        return
-
-    sent = 0
-    failed = 0
-    for user_id in user_ids:
-        try:
-            await _send_broadcast_message(message.bot, user_id, message)
-            sent += 1
-        except Exception as e:
-            failed += 1
-            logging.warning(f"Failed to broadcast to {user_id}: {e}")
-        await asyncio.sleep(0.05)
-
-    await message.answer(f"✅ Рассылка завершена. Успешно: {sent}, ошибок: {failed}")
-    await state.clear()
-
-'''
-@dp.callback_query(F.data == "admin_set_api")
-async def admin_set_api_handler(query: CallbackQuery, state: FSMContext):
-    """Начать процесс установки API_ID/API_HASH"""
-    is_admin = await db.is_admin(query.from_user.id)
-    if not is_admin:
-        await query.answer("❌ У вас нет прав администратора", show_alert=True)
-        return
-    
-    await query.message.answer(
-        "🔑 Установка API_ID и API_HASH\n\n"
-        "1. Перейдите на https://my.telegram.org/apps\n"
-        "2. Войдите в свой аккаунт\n"
-        "3. Создайте приложение (если еще не создано)\n"
-        "4. Скопируйте API_ID и API_HASH\n\n"
-        "ввeдite API_ID (только число):"
-    )
-    await state.set_state(UserState.waiting_api_id)
-    await query.answer()
-
-
-@dp.message(UserState.waiting_api_id)
-async def process_api_id(message: Message, state: FSMContext):
-    """Обработка ввода API_ID"""
-    is_admin = await db.is_admin(message.from_user.id)
-    if not is_admin:
-        await message.answer("❌ У вас нет прав администратора")
-        await state.clear()
-        return
-    
-    try:
-        api_id = int(message.text.strip())
-        await state.update_data(api_id=api_id)
-        await message.answer(f"✅ API_ID сохранен: {api_id}\n\nТеперь ввeдite API_HASH:")
-        await state.set_state(UserState.waiting_api_hash)
-    except ValueError:
-        await message.answer("❌ API_ID должен быть числом. Попробуйте снова:")
-
-
-@dp.message(UserState.waiting_api_hash)
-async def process_api_hash(message: Message, state: FSMContext):
-    """Обработка ввода API_HASH"""
-    is_admin = await db.is_admin(message.from_user.id)
-    if not is_admin:
-        await message.answer("❌ У вас нет прав администратора")
-        await state.clear()
-        return
-    
-    data = await state.get_data()
-    api_id = data.get('api_id')
-    api_hash = message.text.strip()
-    
-    if not api_hash or len(api_hash) < 10:
-        await message.answer("❌ API_HASH слишком короткий. Попробуйте снова:")
-        return
-    
-    try:
-        # Сохраняем в БД
-        await db.set_app_setting("api_id", str(api_id))
-        await db.set_app_setting("api_hash", api_hash)
-        
-        # Обновляем глобальные переменные
-        global API_ID, API_HASH
-        API_ID = api_id
-        API_HASH = api_hash
-        
-        await message.answer(
-            f"✅ API_ID и API_HASH успешно установлены!\n\n"
-            f"API_ID: {api_id}\n"
-            f"API_HASH: {api_hash[:10]}...\n\n"
-            f"Настройки применены. Перезапустите бота для полного применения изменений."
-        )
-        await state.clear()
-        logging.info(f"API credentials updated by admin {message.from_user.id}")
-    except Exception as e:
-        await message.answer(f"❌ Ошибка при сохранении: {e}")
-        await state.clear()
-'''
-
-@dp.callback_query(F.data == "admin_set_admin")
-async def admin_set_admin_handler(query: CallbackQuery, state: FSMContext):
-    """Начать процесс назначения администратора"""
-    is_admin = await db.is_admin(query.from_user.id)
-    if not is_admin:
-        await query.answer("❌ У вас нет прав администратора", show_alert=True)
-        return
-    
-    await query.message.answer(
-        "👤 Назначение администратора\n\n"
-        "Отправьте Telegram ID пользователя, которого хотите сделать администратором.\n"
-        "Чтобы узнать ID, используйте @userinfobot или отправьте /start этому боту."
-    )
-    await state.set_state(UserState.waiting_admin_id)
-    await query.answer()
-
-
-@dp.message(UserState.waiting_admin_id)
-async def process_admin_id(message: Message, state: FSMContext):
-    """Обработка ввода ID администратора"""
-    is_admin = await db.is_admin(message.from_user.id)
-    if not is_admin:
-        await message.answer("❌ У вас нет прав администратора")
-        await state.clear()
-        return
-    
-    try:
-        admin_id = int(message.text.strip())
-        await db.set_admin(admin_id, True)
-        await message.answer(f"✅ Пользователь {admin_id} назначен администратором")
-        await state.clear()
-    except ValueError:
-        await message.answer("❌ ID должен быть числом. Попробуйте снова:")
-
-
-@dp.callback_query(F.data == "admin_view_settings")
-async def admin_view_settings_handler(query: CallbackQuery):
-    """Показать текущие настройки"""
-    is_admin = await db.is_admin(query.from_user.id)
-    if not is_admin:
-        await query.answer("❌ У вас нет прав администратора", show_alert=True)
-        return
-    
-    api_id = await db.get_app_setting("api_id")
-    api_hash = await db.get_app_setting("api_hash")
-    
-    if api_id and api_hash:
-        await query.message.answer(
-            f"📊 Текущие настройки:\n\n"
-            f"API_ID: {api_id}\n"
-            f"API_HASH: {api_hash[:10]}...\n\n"
-            f"Статус: ✅ Установлены"
-        )
-    else:
-        await query.message.answer(
-            "📊 Текущие настройки:\n\n"
-            "API_ID: ❌ Не установлен\n"
-            "API_HASH: ❌ Не установлен\n\n"
-            "Используйте кнопку 'Установить API_ID/API_HASH' для настройки."
-        )
-    await query.answer()
-
-
 async def main() -> None:
     try:
         # Инициализация БД
@@ -1289,17 +1041,7 @@ async def main() -> None:
         await load_api_credentials()
 
         if not API_ID or not API_HASH:
-            logging.warning("⚠️ API_ID и API_HASH не установлены! Администратор должен использовать админ панель")
-
-        # Устанавливаем первого администратора из .env (если указан)
-        admin_id = getenv("ADMIN_ID")
-        if admin_id:
-            try:
-                admin_id_int = int(admin_id)
-                await db.set_admin(admin_id_int, True)
-                logging.info(f"Admin {admin_id_int} set from .env")
-            except ValueError:
-                logging.warning(f"Invalid ADMIN_ID in .env: {admin_id}")
+            logging.warning("⚠️ API_ID и API_HASH не установлены")
 
         global BOT
         BOT = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
