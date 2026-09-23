@@ -19,6 +19,8 @@ from telethon.sessions import StringSession
 from telethon.errors import (
     AuthKeyUnregisteredError,
     FloodWaitError,
+    PeerFloodError,
+    RPCError,
     SessionRevokedError,
     UserDeactivatedBanError,
     UserDeactivatedError,
@@ -650,6 +652,15 @@ async def _send(client: TelegramClient, chat, settings, media_path: str | None):
         )
 
 
+# Столько неудачных отправок подряд в разные чаты — значит, проблема в аккаунте, а не в чатах
+FAIL_STREAK_LIMIT = 5
+
+
+def _is_account_error(error: Exception) -> bool:
+    """Ошибка аккаунта (спам-ограничение или непонятный сбой), а не конкретного чата"""
+    return isinstance(error, PeerFloodError) or not isinstance(error, RPCError)
+
+
 async def _broadcast_loop(user_id: int, cancel_event: asyncio.Event, progress: dict):
     """Рассылает по кругу, пока не остановят. Ошибки, из-за которых продолжать нельзя, пробрасывает."""
     client = await get_user_client(user_id)
@@ -665,6 +676,7 @@ async def _broadcast_loop(user_id: int, cancel_event: asyncio.Event, progress: d
         raise RuntimeError("не найдено чатов для рассылки")
 
     media_path = await _download_bot_file(BOT, settings.file_id) if settings.file_id else None
+    fail_streak = 0
     try:
         while not cancel_event.is_set():
             for chat in chats:
@@ -672,6 +684,7 @@ async def _broadcast_loop(user_id: int, cancel_event: asyncio.Event, progress: d
                     try:
                         await _send(client, chat, settings, media_path)
                         progress["sent"] += 1
+                        fail_streak = 0
                         break
                     except FloodWaitError as e:
                         logging.warning(f"FloodWaitError for {chat.id}: wait {e.seconds} seconds")
@@ -681,6 +694,13 @@ async def _broadcast_loop(user_id: int, cancel_event: asyncio.Event, progress: d
                         raise
                     except Exception as e:
                         logging.error(f"Error sending to {chat.id}: {e}")
+                        if _is_account_error(e):
+                            fail_streak += 1
+                            if fail_streak >= FAIL_STREAK_LIMIT:
+                                raise RuntimeError(
+                                    f"не удалось отправить в {fail_streak} чатов подряд — вероятно, "
+                                    "Telegram ограничил аккаунт. Проверьте его в @SpamBot"
+                                )
                         break
 
                 if await _sleep_or_cancel(cancel_event, PER_MESSAGE_DELAY_SECONDS):
