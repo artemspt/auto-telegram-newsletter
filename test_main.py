@@ -16,7 +16,7 @@ from telethon.tl.types import (
     TextWithEntities,
 )
 
-from telethon.errors import ChatWriteForbiddenError, PeerFloodError
+from telethon.errors import ChatWriteForbiddenError, PeerFloodError, UserBannedInChannelError
 
 from main import _folder_dialogs, _format_seconds, _is_account_error, _parse_delay
 
@@ -90,7 +90,7 @@ assert _parse_delay("abc") is None and _parse_delay("") is None and _parse_delay
 assert [_format_seconds(x) for x in (10, 60, 90, 3600)] == ["10с", "1м", "1м 30с", "1ч 0м"]
 
 # Остановка рассылки: спам-ограничение и непонятные сбои — проблема аккаунта, запрет в чате — нет
-assert _is_account_error(PeerFloodError(None)) and _is_account_error(ConnectionError())
+assert _is_account_error(PeerFloodError(None)) and _is_account_error(UserBannedInChannelError(None)) and _is_account_error(ConnectionError())
 assert not _is_account_error(ChatWriteForbiddenError(None))
 
 print("ok")

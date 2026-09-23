@@ -22,6 +22,7 @@ from telethon.errors import (
     PeerFloodError,
     RPCError,
     SessionRevokedError,
+    UserBannedInChannelError,
     UserDeactivatedBanError,
     UserDeactivatedError,
 )
@@ -658,7 +659,8 @@ FAIL_STREAK_LIMIT = 5
 
 def _is_account_error(error: Exception) -> bool:
     """Ошибка аккаунта (спам-ограничение или непонятный сбой), а не конкретного чата"""
-    return isinstance(error, PeerFloodError) or not isinstance(error, RPCError)
+    # UserBannedInChannel — не бан в одном чате, а спам-ограничение аккаунта на запись в группы
+    return isinstance(error, (PeerFloodError, UserBannedInChannelError)) or not isinstance(error, RPCError)
 
 
 async def _broadcast_loop(user_id: int, cancel_event: asyncio.Event, progress: dict):
@@ -696,7 +698,8 @@ async def _broadcast_loop(user_id: int, cancel_event: asyncio.Event, progress: d
                         logging.error(f"Error sending to {chat.id}: {e}")
                         if _is_account_error(e):
                             fail_streak += 1
-                            if fail_streak >= FAIL_STREAK_LIMIT:
+                            # Все чаты подряд с ошибкой — тоже аккаунт, даже если чатов меньше лимита
+                            if fail_streak >= min(FAIL_STREAK_LIMIT, len(chats)):
                                 raise RuntimeError(
                                     f"не удалось отправить в {fail_streak} чатов подряд — вероятно, "
                                     "Telegram ограничил аккаунт. Проверьте его в @SpamBot"
