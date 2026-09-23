@@ -51,7 +51,7 @@ fi
 log "Installing dependencies"
 "${PYTHON_BIN}" -m pip install -r "${ROOT_DIR}/requirements.txt"
 
-if sudo systemctl list-unit-files | grep -q "^${SERVICE_NAME}\.service"; then
+if systemctl cat "${SERVICE_NAME}" >/dev/null 2>&1; then
   if systemctl is-active "${SERVICE_NAME}" >/dev/null 2>&1; then
     log "Restarting active service: ${SERVICE_NAME}"
     sudo systemctl restart "${SERVICE_NAME}"

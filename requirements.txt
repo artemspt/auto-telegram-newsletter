@@ -1,6 +1,5 @@
-aiogram
-telethon
-python-dotenv
-sqlalchemy
-asyncpg
-psycopg2-binary
+aiogram>=3.31,<4
+telethon>=1.45,<2
+python-dotenv>=1.2,<2
+sqlalchemy>=2.0,<3
+asyncpg>=0.31,<1

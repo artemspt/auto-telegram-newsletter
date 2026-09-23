@@ -40,7 +40,6 @@ call :log INFO Writing run file: %RUN_FILE%
     echo setlocal EnableExtensions
     echo cd /d "%ROOT_DIR%"
     echo if not exist ".env" exit /b 1
-    echo for /f "usebackq tokens=* delims=" %%%%x in ^(".env"^) do set %%%%x
     echo start "Telegram Broadcast Bot" /min "%PYTHON_BIN%" "%ROOT_DIR%\main.py"
 ) > "%RUN_FILE%" || call :die Failed to write run_bot.bat
 

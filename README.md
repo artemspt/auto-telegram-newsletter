@@ -11,7 +11,7 @@ RU | [EN](#english)
 - Выбор отдельных чатов
 - Рассылка текста или медиа с подписью
 - Поддержка `custom emoji entities`
-- Настройка минимальной и максимальной задержки
+- Настройка минимальной и максимальной задержки (по умолчанию 10–15 минут, минимум 10 секунд)
 - Хранение сессий и настроек в PostgreSQL
 - Скрипты установки и обновления для Linux, macOS и Windows
 
@@ -60,8 +60,6 @@ DB_HOST=localhost
 DB_PORT=5432
 DB_NAME=telegram_bot
 
-# Необязательно: первый администратор
-ADMIN_ID=123456789
 ```
 
 Где взять данные:
@@ -93,8 +91,8 @@ python main.py
 3. Пройдите авторизацию по номеру телефона
 4. Выберите папки и/или чаты
 5. Настройте `текст/медиа`
-6. Установите `мин. задержка` и `макс. задержка`
-7. Запустите рассылку
+6. При необходимости измените `мин. задержка` и `макс. задержка` (по умолчанию 10–15 минут между кругами рассылки; можно указать минуты `15` или секунды `30с`, минимум 10 секунд). Задержка меньше 10 минут повышает риск бана аккаунта Telegram
+7. Запустите рассылку. Она идёт до остановки и продолжается после перезапуска бота
 
 ## Скрипты установки и обновления
 
@@ -187,6 +185,8 @@ scripts\update.bat
 ## Важно
 
 - Перед запуском убедитесь, что PostgreSQL доступен и данные в `.env` заполнены корректно
+- Бот работает только в личных сообщениях
+- Проверка логики папок: `python test_main.py`
 
 ## Контакты
 
@@ -206,7 +206,7 @@ Free Telegram bot for automated broadcasting to selected folders and chats using
 - Manual chat selection
 - Text or media broadcasting
 - `custom emoji entities` support
-- Configurable min/max delay
+- Configurable min/max delay (10–15 minutes by default, 10 seconds minimum)
 - PostgreSQL storage for sessions and settings
 - Install and update scripts for Linux, macOS and Windows
 
@@ -253,7 +253,6 @@ DB_HOST=localhost
 DB_PORT=5432
 DB_NAME=telegram_bot
 
-ADMIN_ID=123456789
 ```
 
 ### 3. Prepare PostgreSQL
